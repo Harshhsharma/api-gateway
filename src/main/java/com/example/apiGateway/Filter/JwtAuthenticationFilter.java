@@ -3,6 +3,7 @@ package com.example.apiGateway.Filter;
 import com.example.apiGateway.service.JwtService;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
@@ -52,19 +53,44 @@ public class JwtAuthenticationFilter implements GlobalFilter {
         // Validate JWT
         boolean valid = jwtService.validateToken(token);
 
-        // Valid JWT
-        if (valid) {
-            return chain.filter(exchange);
+        if (!valid) {
+            return unauthorized(exchange);
         }
 
-        // Invalid JWT
-        return unauthorized(exchange);
+        // JWT is valid → get role
+        String role = jwtService.getRole(token);
+
+        System.out.println("User role: " + role);
+
+        // Get HTTP method
+        HttpMethod method =
+                exchange.getRequest().getMethod();
+
+        // ADMIN-only operation
+        if (path.startsWith("/courses")
+                && method == HttpMethod.POST // only for post operations
+                && !role.equals("ADMIN")) {
+
+            return forbidden(exchange);
+        }
+
+        // JWT valid + authorization passed
+        return chain.filter(exchange);
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange) {
 
         exchange.getResponse().setStatusCode(
                 HttpStatus.UNAUTHORIZED
+        );
+
+        return exchange.getResponse().setComplete();
+    }
+
+    private Mono<Void> forbidden(ServerWebExchange exchange) {
+
+        exchange.getResponse().setStatusCode(
+                HttpStatus.FORBIDDEN
         );
 
         return exchange.getResponse().setComplete();
